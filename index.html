@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>모던 2D 탱크 레이서</title>
+    <!-- Tailwind CSS for utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        .game-container {
+            width: 100%;
+            max-width: 450px;
+            min-height: 100vh;
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.8);
+            border-radius: 16px;
+            overflow: hidden;
+            background-color: #222; 
+            display: flex;
+            flex-direction: column;
+            border: 4px solid #444;
+        }
+
+        #gameCanvas {
+            position: relative;
+            width: 100%;
+            flex-grow: 1; 
+            /* 실제적인 디자인: 아스팔트 질감 */
+            background: linear-gradient(to bottom, #252525, #3a3a3a, #252525); 
+            box-shadow: inset 0 0 70px rgba(0, 0, 0, 0.7); 
+            touch-action: none;
+            /* 원근감 */
+            transform: perspective(700px) rotateX(2deg);
+            transform-origin: bottom;
+        }
+
+        /* 3. 실제적인 디자인: 차선 마크 */
+        .lane-mark {
+            position: absolute;
+            background-color: #f1c40f; 
+            width: 10px;
+            height: 70px;
+            opacity: 0.8;
+            border-radius: 4px;
+            box-shadow: 0 0 7px rgba(241, 196, 15, 0.9);
+            z-index: 10; 
+        }
+
+        /* ============== 탱크 (플레이어) 모양 - SC1 시즈 탱크 스타일로 변경 ============== */
+        #player {
+            position: absolute;
+            width: 80px; /* 더 넓고 튼튼하게 */
+            height: 80px; 
+            bottom: 100px; 
+            transition: left 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            z-index: 50;
+        }
+        
+        /* 탱크 본체 (짙은 회색) */
+        .tank-body {
+            position: absolute;
+            width: 60px;
+            height: 70px;
+            left: 10px;
+            bottom: 10px;
+            background: linear-gradient(to bottom, #7f8c8d, #5b6870); /* 메탈릭 그레이 */
+            border: 3px solid #3d4a52;
+            border-radius: 5px;
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.7);
+        }
+
+        /* 궤도 (Treads) */
+        .tank-tread-left, .tank-tread-right {
+            position: absolute;
+            width: 10px;
+            height: 100%;
+            background-color: #34495e; /* 짙은 남색 계열 */
+            border-radius: 3px;
+            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+        }
+        .tank-tread-left {
+            left: 0;
+        }
+        .tank-tread-right {
+            right: 0;
+        }
+
+        /* 포탑 (Turret, 각진 형태) */
+        .tank-turret {
+            position: absolute;
+            width: 50px;
+            height: 35px;
+            background: linear-gradient(45deg, #aeb6bf, #7f8c8d); 
+            border-radius: 3px;
+            top: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 2px solid #5b6870;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+            z-index: 60;
+        }
+
+        /* 포신 (Barrel, 짧고 굵은 형태) */
+        .tank-barrel {
+            position: absolute;
+            width: 15px;
+            height: 40px;
+            background: linear-gradient(to right, #7f8c8d, #95a5a6); 
+            border-radius: 3px 3px 0 0;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+            z-index: 55;
+        }
+        
+        /* 보호막 시각 효과 */
+        .shield-effect {
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            width: 100px; /* 탱크보다 크게 */
+            height: 100px; /* 탱크보다 크게 */
+            border-radius: 10px; /* 각진 탱크에 맞게 조정 */
+            background: rgba(155, 89, 182, 0.3); /* 보라색 반투명 */
+            border: 3px solid #9b59b6;
+            box-shadow: 0 0 20px #9b59b6;
+            transition: opacity 0.2s;
+            pointer-events: none;
+            z-index: 45; /* 탱크와 아이템 사이에 위치 */
+        }
+
+        .stunned {
+            animation: flash 0.1s infinite alternate;
+        }
+        @keyframes flash {
+            from { opacity: 1; }
+            to { opacity: 0.3; }
+        }
+        /* ============================================== */
+
+        /* 게임 요소 스타일 */
+        .game-element {
+            position: absolute;
+            width: 55px; 
+            height: 55px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.8);
+            font-size: 28px;
+            font-weight: 700;
+            border-radius: 10px;
+            z-index: 40;
+            border: 3px solid;
+            transition: transform 0.05s;
+            /* 요청 1: 아이템 배경 투명하게 (도로 배경이 비치도록) */
+            background-color: transparent; 
+            backdrop-filter: blur(1px); /* 약간의 블러 효과 추가 */
+        }
+
+        /* 요청 2: 선물 흔들림 애니메이션 */
+        @keyframes wiggle {
+            0%, 100% { transform: translateX(0) rotate(5deg); }
+            50% { transform: translateX(3px) rotate(5deg); } 
+        }
+
+        /* 아이템/장애물 스타일 (배경 제거, 테두리색만 사용) */
+        .bomb { 
+            /* background: radial-gradient(circle at 70% 30%, #e74c3c, #c0392b); */
+            border-color: #e74c3c; /* 폭탄 색깔 테두리 */
+            border-radius: 50%;
+            font-size: 30px;
+            color: #e74c3c; /* 아이콘 색깔 지정 */
+        } 
+        .gift { 
+            /* background: linear-gradient(135deg, #f39c12, #e67e22); */
+            border-color: #f39c12; /* 선물 색깔 테두리 */
+            border-radius: 8px;
+            transform: rotate(5deg); /* 초기 기울임 유지 */
+            animation: wiggle 0.5s ease-in-out infinite alternate; /* 흔들림 추가 */
+            color: #f39c12; /* 아이콘 색깔 지정 */
+        } 
+        .boost { 
+            /* background: linear-gradient(45deg, #3498db, #2980b9); */
+            border-color: #3498db; /* 부스트 색깔 테두리 */
+            border-radius: 50%;
+            font-size: 20px;
+            color: #3498db; /* 아이콘 색깔 지정 */
+        } 
+        .shield { 
+            /* background: linear-gradient(45deg, #9b59b6, #8e44ad); */
+            border-color: #9b59b6; /* 방패 색깔 테두리 */
+            border-radius: 50%;
+            font-size: 28px;
+            color: #9b59b6; /* 아이콘 색깔 지정 */
+        }
+        
+        /* 4. HUD를 캔버스 내부에 배치 (도로 위) */
+        .hud-top-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 10px;
+            pointer-events: none; /* 클릭을 막아 게임 조작에 방해되지 않도록 */
+            z-index: 90;
+        }
+        
+        .hud-item {
+            padding: 6px 10px;
+            border-radius: 6px;
+            background-color: rgba(28, 40, 51, 0.85); /* 반투명 배경 */
+            color: #ecf0f1;
+            font-weight: 600;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+            margin: 0 4px; 
+            min-width: 70px;
+            text-align: center;
+            font-size: 12px;
+            line-height: 1.2;
+        }
+
+        .hud-value {
+            font-size: 16px;
+            font-weight: 900;
+            color: #f1c40f; 
+            text-shadow: 0 0 5px rgba(241, 196, 15, 0.5);
+            display: block;
+        }
+
+        .indicator-overlay {
+            position: absolute;
+            top: 50px; /* HUD 아래에 배치 */
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            justify-content: center;
+            space-x: 10px;
+            pointer-events: none;
+            z-index: 90;
+        }
+        
+        .indicator {
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 15px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(2px);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 조작 버튼 */
+        .overlay-controls {
+            position: absolute;
+            bottom: 20px; 
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 400px; 
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            pointer-events: none; 
+            z-index: 70;
+        }
+        
+        .overlay-button {
+            width: 100px; 
+            height: 70px;
+            background-color: rgba(241, 196, 15, 0.1); 
+            border: 2px solid #f1c40f;
+            color: #f1c40f; 
+            font-size: 3rem; 
+            font-weight: 900; 
+            text-shadow: 0 0 10px rgba(241, 196, 15, 0.8); 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.05s, background-color 0.1s;
+            pointer-events: auto; 
+            cursor: pointer;
+            user-select: none;
+            border-radius: 12px;
+        }
+
+        .overlay-button:active {
+            transform: scale(0.95);
+            background-color: rgba(241, 196, 15, 0.3);
+            text-shadow: 0 0 5px rgba(241, 196, 15, 1);
+        }
+
+        .message-box {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 100;
+        }
+        .message-content {
+            background: #2c3e50;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 5px 30px rgba(0, 0, 0, 0.8), inset 0 0 10px #444;
+            color: white;
+            border: 2px solid #3498db;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <!-- 게임 캔버스 (모든 요소 포함) -->
+    <div id="gameCanvas">
+        
+        <!-- 4. HUD 오버레이 (캔버스 내부에 위치) -->
+        <div id="hudOverlay" class="hud-top-overlay">
+            <div class="flex-1 text-left">
+                <div class="hud-item inline-block">
+                    점수: <span id="scoreDisplay" class="hud-value">0</span>
+                </div>
+                <div class="hud-item inline-block">
+                    거리: <span id="distanceDisplay" class="hud-value text-green-400">0.00 km</span>
+                </div>
+            </div>
+            <div class="flex-1 text-right">
+                <div class="hud-item inline-block">
+                    속도: <span id="speedDisplay" class="hud-value">2.0 m/s</span>
+                </div>
+                <div class="hud-item inline-block">
+                    폭탄: <span id="bombHitDisplay" class="hud-value text-red-400">0 / 3</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 인디케이터 오버레이 -->
+        <div class="indicator-overlay">
+            <!-- 부스트 타이머 추가 -->
+            <span id="boostIndicator" class="indicator text-blue-300 hidden">
+                <i class="fas fa-bolt"></i> X2 활성화 (<span id="boostTimer">0.0</span>s)
+            </span>
+            <span id="shieldIndicator" class="indicator text-purple-300 hidden">
+                <i class="fas fa-shield-alt"></i> 방패: 1회
+            </span>
+        </div>
+
+        <!-- 플레이어 탱크 요소 (시즈 탱크 스타일) -->
+        <div id="player">
+            <!-- 5. 보호막 효과 요소 -->
+            <div id="shieldEffect" class="shield-effect hidden"></div>
+            <!-- SC1 시즈 탱크의 궤도와 본체 구조 -->
+            <div class="tank-tread-left"></div>
+            <div class="tank-tread-right"></div>
+            <div class="tank-body"></div>
+            <div class="tank-turret"></div>
+            <div class="tank-barrel"></div>
+        </div>
+        
+        <!-- 메시지 박스 -->
+        <div id="messageBox" class="message-box" style="display: flex;">
+            <div class="message-content">
+                <h2 class="text-3xl font-bold mb-4 text-white">탱크 로드 레이서 (SC-T)</h2>
+                <p class="mb-6 text-gray-300">화면 스와이프나 하단 버튼으로 차선을 변경하세요!</p>
+                <p class="mb-8 text-sm text-gray-400">폭탄 3회 충돌 시 게임 오버</p>
+                <button id="startButton" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-xl transition duration-150 shadow-lg">
+                    <i class="fas fa-play"></i> 게임 시작 (2m/s)
+                </button>
+            </div>
+        </div>
+        
+        <!-- 조작 버튼 -->
+        <div class="overlay-controls">
+            <button id="leftButton" class="overlay-button">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <button id="rightButton" class="overlay-button">
+                <i class="fas fa-arrow-right"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ============== 상수 및 초기 설정 ==============
+    const gameCanvas = document.getElementById('gameCanvas');
+    const player = document.getElementById('player');
+    const shieldEffect = document.getElementById('shieldEffect');
+    const scoreDisplay = document.getElementById('scoreDisplay');
+    const distanceDisplay = document.getElementById('distanceDisplay');
+    const speedDisplay = document.getElementById('speedDisplay');
+    const bombHitDisplay = document.getElementById('bombHitDisplay');
+    const messageBox = document.getElementById('messageBox');
+    const startButton = document.getElementById('startButton');
+    const boostIndicator = document.getElementById('boostIndicator');
+    const boostTimer = document.getElementById('boostTimer'); // 부스트 타이머 요소
+    const shieldIndicator = document.getElementById('shieldIndicator');
+    const leftButton = document.getElementById('leftButton');
+    const rightButton = document.getElementById('rightButton'); 
+
+    const LANE_WIDTH = 100;
+    const INITIAL_SPEED = 2.0; 
+    const SPEED_INCREMENT_TIME = 8000; 
+    const SPEED_INCREMENT_AMOUNT = 0.5; // 속도 증가량을 0.5 m/s로 변경했습니다.
+    
+    // 차선 마크 상수
+    const LANE_MARK_HEIGHT = 70;
+    const LANE_MARK_GAP = 80;
+    const LANE_MARK_CYCLE = LANE_MARK_HEIGHT + LANE_MARK_GAP;
+    
+    // 아이템/장애물 최소 간격 
+    const ITEM_MIN_GAP_DISTANCE = 150; 
+    
+    const BOOST_DURATION = 4000; 
+    const BOMB_STUN_DURATION = 300; 
+    const BOMB_MAX_HITS = 3; 
+    
+    // 레어 아이템 쿨다운 10초
+    const RARE_ITEM_COOLDOWN = 10000; 
+    
+    // 스와이프 감지 상수
+    const SWIPE_THRESHOLD = 50; 
+    
+    // 게임 상태 변수
+    let isPlaying = false;
+    let score = 0;
+    let distance = 0; 
+    let speed = INITIAL_SPEED;
+    let bombHits = 0;
+    let shieldCount = 0; 
+    let isStunned = false;
+
+    // 스와이프 상태 변수
+    let touchStartX = 0;
+    
+    let lastTime = 0;
+    
+    // DOM 요소 대신 객체 배열로 관리
+    let items = [];
+    let laneMarks = [];
+
+    // 아이템 생성 제어 변수
+    let nextItemSpawnDistance = ITEM_MIN_GAP_DISTANCE * 1.5; 
+    
+    let lastSpeedIncreaseTime = 0;
+    let lastBoostTime = 0;
+    let lastShieldTime = 0;
+
+    let gameFrame;
+
+    let canvasWidth = 0;
+    let canvasHeight = 0;
+    let laneCenters = [];
+    let currentLane = 1; 
+
+    const playerWidth = 80; // 탱크 너비 변경
+    const playerHeight = 80; // 탱크 높이 변경
+    const itemSize = 55;
+    const PLAYER_BOTTOM_OFFSET = 100; 
+    const DRAW_FACTOR = 150; // 가시거리 증가 (속도감 증가)
+
+    // 초기화 및 리사이즈 처리
+    function setupCanvas() {
+        canvasWidth = gameCanvas.clientWidth;
+        canvasHeight = gameCanvas.clientHeight;
+        
+        // 3차선 중앙 위치 계산
+        laneCenters[0] = canvasWidth / 2 - LANE_WIDTH;
+        laneCenters[1] = canvasWidth / 2;
+        laneCenters[2] = canvasWidth / 2 + LANE_WIDTH;
+        
+        resetPlayerPosition();
+    }
+
+    function resetPlayerPosition() {
+        player.style.left = `${laneCenters[currentLane] - playerWidth / 2}px`;
+        player.style.bottom = `${PLAYER_BOTTOM_OFFSET}px`; 
+    }
+
+    // ============== 게임 상태 관리 ==============
+
+    function startGame() {
+        if (isPlaying) return;
+        
+        // 상태 초기화
+        score = 0;
+        distance = 0; 
+        speed = INITIAL_SPEED;
+        bombHits = 0;
+        shieldCount = 0;
+        isStunned = false;
+        currentLane = 1;
+        
+        // 렉 방지를 위해 기존 DOM 요소 모두 제거
+        items.forEach(item => item.element.remove());
+        items = [];
+        laneMarks.forEach(mark => mark.element.remove());
+        laneMarks = [];
+        const now = performance.now();
+        
+        nextItemSpawnDistance = ITEM_MIN_GAP_DISTANCE * 1.5; 
+
+        lastTime = now;
+        lastSpeedIncreaseTime = now;
+        lastBoostTime = now - RARE_ITEM_COOLDOWN; 
+        lastShieldTime = now - RARE_ITEM_COOLDOWN; 
+        
+        // UI 초기화
+        messageBox.style.display = 'none';
+        player.classList.remove('stunned');
+        updateShieldVisual();
+        updateHUD();
+        resetPlayerPosition();
+        
+        isPlaying = true;
+        gameFrame = requestAnimationFrame(gameLoop);
+    }
+
+    function endGame() {
+        if (!isPlaying) return;
+        isPlaying = false;
+        cancelAnimationFrame(gameFrame);
+        
+        document.getElementById('messageBox').style.display = 'flex';
+        document.querySelector('.message-content h2').textContent = '💥 게임 오버! 💥';
+        document.querySelector('.message-content p').innerHTML = `최종 점수: <span class="font-bold text-2xl text-yellow-500">${score} 점</span><br>주행 거리: <span class="font-bold text-2xl text-green-500">${(distance / 1000).toFixed(2)} km</span>`;
+        document.getElementById('startButton').innerHTML = '<i class="fas fa-redo"></i> 다시 시작';
+    }
+    
+    function handleStun() {
+        if (isStunned) return;
+
+        isStunned = true;
+        player.classList.add('stunned');
+
+        setTimeout(() => {
+            isStunned = false;
+            player.classList.remove('stunned');
+        }, BOMB_STUN_DURATION);
+    }
+
+    // 보호막 시각 효과 업데이트 함수
+    function updateShieldVisual() {
+        shieldEffect.classList.toggle('hidden', shieldCount <= 0);
+    }
+
+    // ============== 이벤트 핸들러 (스와이프, 키보드, 버튼) ==============
+
+    function moveTank(direction) {
+        if (!isPlaying || isStunned) return;
+        let newLane = currentLane + direction;
+        
+        if (newLane >= 0 && newLane < 3) {
+            currentLane = newLane;
+            player.style.left = `${laneCenters[currentLane] - playerWidth / 2}px`;
+        }
+    }
+
+    startButton.addEventListener('click', startGame);
+    leftButton.addEventListener('click', () => moveTank(-1));
+    rightButton.addEventListener('click', () => moveTank(1));
+
+    // 키보드 제어
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') {
+            moveTank(-1);
+        } else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') {
+            moveTank(1);
+        }
+    });
+
+    // 스와이프 시작 (터치 및 마우스)
+    function handleStart(e) {
+        if (!isPlaying) return;
+        if (e.target.closest('.overlay-button')) return; 
+
+        e.preventDefault(); 
+        touchStartX = e.touches ? e.touches[0].clientX : e.clientX;
+    }
+    
+    // 스와이프 종료 (터치 및 마우스)
+    function handleEnd(e) {
+        if (!isPlaying) return;
+        if (e.target.closest('.overlay-button')) return; 
+        
+        const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+
+        const deltaX = clientX - touchStartX;
+        
+        if (Math.abs(deltaX) > SWIPE_THRESHOLD) {
+            if (deltaX > 0) {
+                moveTank(1); // 오른쪽 스와이프
+            } else {
+                moveTank(-1); // 왼쪽 스와이프
+            }
+        }
+    }
+
+    // 터치 이벤트 리스너 추가 (모바일)
+    gameCanvas.addEventListener('touchstart', handleStart);
+    gameCanvas.addEventListener('touchend', handleEnd);
+
+    // 마우스 이벤트 리스너 추가 (데스크톱 드래그)
+    gameCanvas.addEventListener('mousedown', handleStart);
+    gameCanvas.addEventListener('mouseup', handleEnd);
+
+
+    // 리사이즈 및 로드 시 캔버스 설정
+    window.addEventListener('resize', setupCanvas);
+    window.onload = setupCanvas;
+
+    // ============== 게임 요소 및 로직 ==============
+
+    // 차선 마크 생성
+    function spawnLaneMarks(yPosition) {
+        const markWidth = 10; 
+        
+        const boundary1X = laneCenters[1] - LANE_WIDTH / 2 - markWidth / 2;
+        const boundary2X = laneCenters[1] + LANE_WIDTH / 2 - markWidth / 2;
+
+        [boundary1X, boundary2X].forEach(xPos => {
+            const mark = document.createElement('div');
+            mark.className = 'lane-mark';
+            mark.style.left = `${xPos}px`;
+            mark.style.top = `${yPosition}px`;
+            gameCanvas.appendChild(mark);
+            
+            // 렉 방지: DOM 요소와 위치를 객체로 저장
+            laneMarks.push({
+                element: mark,
+                y: yPosition
+            });
+        });
+    }
+    
+    // 차선 마크 업데이트 (DOM 조작 최소화)
+    function updateLaneMarks(deltaTime) {
+        // 가시거리 증가를 위해 DRAW_FACTOR 사용
+        const moveDistance = speed * deltaTime * DRAW_FACTOR; 
+
+        for (let i = laneMarks.length - 1; i >= 0; i--) {
+            const mark = laneMarks[i];
+            mark.y += moveDistance;
+            mark.element.style.top = `${mark.y}px`; // DOM 조작은 여기서 한번만
+
+            if (mark.y > canvasHeight) {
+                mark.element.remove();
+                laneMarks.splice(i, 1);
+            }
+        }
+
+        const topMark = laneMarks.length > 0 ? laneMarks.reduce((a, b) => a.y < b.y ? a : b) : null;
+        
+        if (!topMark || topMark.y >= LANE_MARK_CYCLE * -1) {
+            const newY = topMark ? topMark.y - LANE_MARK_CYCLE : -LANE_MARK_HEIGHT;
+            spawnLaneMarks(newY);
+        }
+    }
+
+    function spawnItem() {
+        const laneIndex = Math.floor(Math.random() * 3);
+        const now = performance.now();
+
+        const isBoostReady = now - lastBoostTime >= RARE_ITEM_COOLDOWN;
+        const isShieldReady = now - lastShieldTime >= RARE_ITEM_COOLDOWN;
+        
+        const itemPool = ['bomb', 'gift'];
+        if (isBoostReady) itemPool.push('boost');
+        if (isShieldReady) itemPool.push('shield');
+
+        let itemType;
+        const rand = Math.random();
+
+        // 폭탄 확률 45%, 선물 45%, 레어 10% 시도
+        if (rand < 0.45) { 
+            itemType = 'bomb';
+        } else if (rand < 0.90) { 
+            itemType = 'gift';
+        } else { 
+            const rareItems = itemPool.filter(i => i === 'boost' || i === 'shield');
+            if (rareItems.length > 0) {
+                itemType = rareItems[Math.floor(Math.random() * rareItems.length)];
+            } else {
+                itemType = Math.random() < 0.5 ? 'bomb' : 'gift';
+            }
+        }
+        
+        // 레어 아이템 쿨다운 업데이트
+        if (itemType === 'boost' && isBoostReady) {
+            lastBoostTime = now;
+        } else if (itemType === 'shield' && isShieldReady) {
+            lastShieldTime = now;
+        }
+
+
+        const item = document.createElement('div');
+        item.className = 'game-element ' + itemType;
+        item.style.top = `${-itemSize}px`;
+        item.dataset.type = itemType;
+        item.style.left = `${laneCenters[laneIndex] - itemSize / 2}px`; 
+
+        switch (itemType) {
+            case 'bomb':
+                item.innerHTML = '<i class="fas fa-bomb"></i>'; 
+                break;
+            case 'gift':
+                item.innerHTML = '<i class="fas fa-gift"></i>';
+                break;
+            case 'boost':
+                item.innerHTML = 'X2';
+                break;
+            case 'shield':
+                item.innerHTML = '<i class="fas fa-shield-alt"></i>';
+                break;
+        }
+
+        gameCanvas.appendChild(item);
+        
+        // 렉 방지: DOM 요소와 위치를 객체로 저장
+        items.push({
+            element: item,
+            y: -itemSize,
+            laneIndex: laneIndex 
+        });
+    }
+
+    function updateItems(deltaTime) {
+        const now = performance.now();
+        const effectiveSpeed = isStunned ? 0 : speed;
+        // 가시거리 증가를 위해 DRAW_FACTOR 사용
+        const moveDistance = effectiveSpeed * deltaTime * DRAW_FACTOR; 
+        
+        // 아이템 이동 및 생성 제어
+        nextItemSpawnDistance -= moveDistance;
+        if (nextItemSpawnDistance <= 0) {
+            spawnItem();
+            // 최소 간격 + 랜덤 추가 간격
+            nextItemSpawnDistance = ITEM_MIN_GAP_DISTANCE + (Math.random() * 100); 
+        }
+
+        const playerX = parseFloat(player.style.left);
+        const playerYTop = canvasHeight - playerHeight - PLAYER_BOTTOM_OFFSET;
+        const playerYBottom = canvasHeight - PLAYER_BOTTOM_OFFSET;
+        
+        // 아이템 이동 및 충돌 감지 (for 루프를 거꾸로 돌며 제거 시 배열 인덱스 문제 방지)
+        for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            
+            item.y += moveDistance;
+            item.element.style.top = `${item.y}px`; // DOM 조작은 여기서 한번만
+
+            // 충돌 감지
+            const itemX = parseFloat(item.element.style.left);
+            
+            const isColliding = item.y + itemSize > playerYTop &&
+                                item.y < playerYBottom &&
+                                itemX < playerX + playerWidth &&
+                                itemX + itemSize > playerX;
+
+            if (isColliding) {
+                handleCollision(item, now);
+                item.element.remove();
+                items.splice(i, 1);
+            } else if (item.y > canvasHeight) {
+                // 화면 밖으로 나간 아이템 제거
+                item.element.remove();
+                items.splice(i, 1);
+            }
+        }
+    }
+
+    function handleCollision(item, now) {
+        const itemType = item.element.dataset.type;
+        const isBoostActive = now < lastBoostTime + BOOST_DURATION;
+
+        switch (itemType) {
+            case 'bomb': 
+                if (shieldCount > 0) {
+                    shieldCount--;
+                    updateShieldVisual(); // 보호막 시각 효과 제거
+                } else {
+                    bombHits++;
+                    handleStun();
+                    if (bombHits >= BOMB_MAX_HITS) {
+                        endGame();
+                        return;
+                    }
+                }
+                break;
+            case 'gift': 
+                const points = isBoostActive ? 20 : 10;
+                score += points;
+                break;
+            case 'boost': 
+                lastBoostTime = now;
+                break;
+            case 'shield': 
+                shieldCount = 1;
+                updateShieldVisual(); // 보호막 시각 효과 활성화
+                break;
+        }
+        
+        updateHUD();
+    }
+    
+    function updateHUD() {
+        const now = performance.now();
+        const boostEndTime = lastBoostTime + BOOST_DURATION;
+        const isBoostActive = now < boostEndTime;
+
+        scoreDisplay.textContent = score;
+        distanceDisplay.textContent = `${(distance / 1000).toFixed(2)} km`; 
+        speedDisplay.textContent = `${speed.toFixed(1)} m/s`;
+        bombHitDisplay.textContent = `${bombHits} / ${BOMB_MAX_HITS}`;
+        
+        // 인디케이터 업데이트
+        boostIndicator.classList.toggle('hidden', !isBoostActive);
+        
+        if (isBoostActive) {
+            const remainingTimeMs = boostEndTime - now;
+            const remainingSeconds = Math.max(0, remainingTimeMs / 1000);
+            boostTimer.textContent = remainingSeconds.toFixed(1); // 남은 시간 표시
+        }
+        
+        shieldIndicator.classList.toggle('hidden', shieldCount <= 0);
+    }
+
+    // ============== 메인 루프 ==============
+    function gameLoop(currentTime) {
+        if (!isPlaying) return;
+
+        // 렉 방지: deltaTime 계산으로 프레임 속도에 독립적인 움직임 구현
+        const deltaTime = (currentTime - lastTime) / 1000;
+        lastTime = currentTime;
+        
+        const effectiveSpeed = isStunned ? 0 : speed;
+        distance += effectiveSpeed * deltaTime;
+        
+        // 속도 증가 
+        if (currentTime - lastSpeedIncreaseTime >= SPEED_INCREMENT_TIME) {
+            speed += SPEED_INCREMENT_AMOUNT;
+            lastSpeedIncreaseTime = currentTime;
+        }
+
+        // 폭탄 충돌로 정지된 상태가 아닐 때만 요소들을 움직입니다.
+        if (!isStunned) {
+            updateLaneMarks(deltaTime);
+        }
+        
+        updateItems(deltaTime);
+        updateHUD();
+
+
+        gameFrame = requestAnimationFrame(gameLoop);
+    }
+</script>
+</body>
+</html>
