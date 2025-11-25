@@ -47,12 +47,17 @@
 
         .lane-mark {
             position: absolute;
-            background-color: #f1c40f;
+            /* 더 길게 보이는 차선: 위쪽은 옅고 아래로 갈수록 진하게 */
+            background: linear-gradient(to bottom,
+                rgba(241, 196, 15, 0.15),
+                rgba(241, 196, 15, 0.9)
+            );
             width: 10px;
-            height: 70px;
-            opacity: 0.8;
-            border-radius: 4px;
-            box-shadow: 0 0 7px rgba(241, 196, 15, 0.9);
+            /* 70px → 120px, 차선 길이 증가 */
+            height: 120px;
+            opacity: 0.95;
+            border-radius: 6px;
+            box-shadow: 0 0 10px rgba(241, 196, 15, 1);
             z-index: 10;
         }
 
@@ -403,8 +408,8 @@
     const SPEED_INCREMENT_TIME = 8000;
     const SPEED_INCREMENT_AMOUNT = 0.5;
 
-    const LANE_MARK_HEIGHT = 70;
-    const LANE_MARK_GAP = 80;
+    const LANE_MARK_HEIGHT = 120;  // 차선 길이 증가
+    const LANE_MARK_GAP = 60;    // 간격을 줄여 거의 이어진 느낌
     const LANE_MARK_CYCLE = LANE_MARK_HEIGHT + LANE_MARK_GAP;
 
     // 폭탄/아이템 간격(5% 증가)
